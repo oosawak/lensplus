@@ -288,6 +288,56 @@
     margin-top: 6px;
   }
 
+  .drop-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .drop-zone {
+    position: relative;
+    display: grid;
+    gap: 8px;
+    align-content: start;
+    min-height: 128px;
+    padding: 14px;
+    border: 1px dashed rgba(255, 255, 255, 0.18);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.03);
+    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+  }
+
+  .drop-zone.is-dragover {
+    border-color: rgba(126, 224, 194, 0.75);
+    background: rgba(126, 224, 194, 0.08);
+    transform: translateY(-1px);
+  }
+
+  .drop-zone .drop-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .drop-zone .drop-hint {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .drop-zone .file-name {
+    color: var(--accent);
+    font-size: 12px;
+    word-break: break-all;
+  }
+
+  .drop-zone input[type="file"] {
+    margin-top: 4px;
+  }
+
   #list {
     display: grid;
     gap: 14px;
@@ -322,6 +372,7 @@
   @media (max-width: 900px) {
     .grid { grid-template-columns: 1fr; }
     .row { grid-template-columns: 1fr; }
+    .drop-grid { grid-template-columns: 1fr; }
     .hero { padding: 22px 18px 18px; }
   }
 
@@ -359,17 +410,29 @@
         <h2>📸 新規登録</h2>
         <p>画像を入れてから OCR と LLM を順に実行します。</p>
 
-        <div class="row">
-          <div>
-            <label>Thumbnail Image</label>
+        <div class="drop-grid">
+          <div class="drop-zone" data-drop-target="thumb">
+            <div class="drop-title">
+              <span>Thumbnail Image</span>
+              <span class="file-name" id="thumbName">未選択</span>
+            </div>
+            <div class="drop-hint">クリックで選択、または画像をこの枠にドラッグ&ドロップしてください。</div>
             <input id="thumb" type="file" accept="image/*">
           </div>
-          <div>
-            <label>Info Image (OCR)</label>
+          <div class="drop-zone" data-drop-target="info">
+            <div class="drop-title">
+              <span>Info Image (OCR)</span>
+              <span class="file-name" id="infoName">未選択</span>
+            </div>
+            <div class="drop-hint">OCR 用のスクショを入れてください。</div>
             <input id="info" type="file" accept="image/*">
           </div>
-          <div>
-            <label>QR Image</label>
+          <div class="drop-zone" data-drop-target="qr">
+            <div class="drop-title">
+              <span>QR Image</span>
+              <span class="file-name" id="qrName">未選択</span>
+            </div>
+            <div class="drop-hint">QR が写っている画像を入れてください。</div>
             <input id="qr" type="file" accept="image/*">
           </div>
         </div>
@@ -498,6 +561,77 @@ async function decodeQR(file) {
   });
   return code ? code.data : "";
 }
+
+function setFileInput(inputId, file) {
+  const input = document.getElementById(inputId);
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+
+  const nameTarget = document.getElementById(`${inputId}Name`);
+  if (nameTarget) {
+    nameTarget.textContent = file.name;
+  }
+}
+
+function bindDropZone(zone, inputId) {
+  const input = document.getElementById(inputId);
+  const fileName = document.getElementById(`${inputId}Name`);
+  const labelMap = {
+    thumb: "Thumbnail Image",
+    info: "Info Image",
+    qr: "QR Image"
+  };
+
+  const syncName = () => {
+    fileName.textContent = input.files[0] ? input.files[0].name : "未選択";
+  };
+
+  input.addEventListener("change", syncName);
+
+  zone.addEventListener("click", (event) => {
+    if (event.target !== input) {
+      input.click();
+    }
+  });
+
+  zone.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    zone.classList.add("is-dragover");
+  });
+
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("is-dragover");
+  });
+
+  zone.addEventListener("dragleave", (event) => {
+    if (!zone.contains(event.relatedTarget)) {
+      zone.classList.remove("is-dragover");
+    }
+  });
+
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.classList.remove("is-dragover");
+
+    const file = event.dataTransfer.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("画像ファイルをドロップしてください");
+      return;
+    }
+
+    setFileInput(inputId, file);
+    toast(`${labelMap[inputId] || inputId} をセットしました`);
+  });
+
+  syncName();
+}
+
+document.querySelectorAll(".drop-zone").forEach((zone) => {
+  bindDropZone(zone, zone.dataset.dropTarget);
+});
 
 /* 日本語 OCR + QR */
 document.getElementById("process").onclick = async () => {
