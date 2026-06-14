@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Recipe Saver (日本語OCR + モデルアップロード)</title>
+<title>Recipe Saver (日本語OCR + 自動取得/モデルアップロード)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -82,13 +82,34 @@
   <h3>LLM JSON 出力</h3>
   <textarea id="llmJson"></textarea>
 
-  <button id="runLLM">ローカル LLM 実行</button>
+  <button id="runLLM">LLM 実行</button>
   <button id="save">DB に保存</button>
 </div>
 
 <div class="card">
-  <h2>🧠 モデルアップロード（ローカルのみ）</h2>
-  <p>Qwen2.5-0.5B-Instruct のファイルをローカルから選択してください。</p>
+  <h2>🧠 小さいモデルを自動取得</h2>
+  <p>Transformers.js 対応の Hugging Face モデルIDを指定すると、ブラウザが自動でダウンロードします。</p>
+  <label>Model ID</label>
+  <input id="remote_model_id" value="onnx-community/Qwen2.5-0.5B-Instruct">
+  <p>
+    URL:
+    <a id="remote_model_url" href="https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct" target="_blank" rel="noreferrer">
+      https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct
+    </a>
+  </p>
+  <button id="loadRemoteModel">このモデルを自動読み込み</button>
+</div>
+
+<div class="card">
+  <h2>🧠 大きいモデルは手動投入</h2>
+  <p>ダウンロードしたモデルを手元で選んで読み込めます。URL は参考用です。</p>
+  <p>
+    例:
+    <a href="https://huggingface.co/Qwen/Qwen2.5-3B-Instruct" target="_blank" rel="noreferrer">
+      https://huggingface.co/Qwen/Qwen2.5-3B-Instruct
+    </a>
+  </p>
+  <p>Qwen2.5-0.5B-Instruct などの小型モデルは上の自動取得を使ってください。</p>
   <div class="row">
     <div>
       <label>config.json</label>
@@ -114,7 +135,7 @@
     <input id="m_gen" type="file" accept=".json">
   </div>
 
-  <button id="loadModel">モデルを読み込む</button>
+  <button id="loadModel">ダウンロード済みモデルを読み込む</button>
 </div>
 
 <div class="card">
@@ -128,14 +149,22 @@
 <!-- Tesseract.js -->
 <script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
 
-<!-- transformers.js（本体のみCDNから。モデルはアップロード） -->
+<!-- transformers.js（ライブラリ本体のみCDNから。モデルは Hugging Face か手動投入） -->
 <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js"></script>
 
-<!-- LLM Worker（モデルアップロード対応） -->
+<!-- LLM Worker（自動取得 + 手動投入対応） -->
 <script id="llm-worker" type="javascript/worker">
   importScripts("https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js");
 
   let generator = null;
+  let currentModelLabel = null;
+
+  async function loadRemoteModel(modelId) {
+    transformers.env.allowRemoteModels = true;
+    return await transformers.pipeline("text-generation", modelId, {
+      dtype: "q4"
+    });
+  }
 
   async function loadFromFiles(fileMap) {
     // fileMap: { "config.json": ArrayBuffer, "tokenizer.json": ArrayBuffer, ... }
@@ -183,10 +212,23 @@
   onmessage = async (e) => {
     const { type } = e.data;
 
+    if (type === "load-remote") {
+      try {
+        postMessage({ type: "status", message: "小さいモデルを取得中..." });
+        currentModelLabel = e.data.modelId;
+        generator = await loadRemoteModel(e.data.modelId);
+        postMessage({ type: "status", message: "モデル準備完了: " + e.data.modelId });
+      } catch (err) {
+        postMessage({ type: "error", message: err.message || String(err) });
+      }
+      return;
+    }
+
     if (type === "load-model") {
       try {
         postMessage({ type: "status", message: "モデル読み込み中..." });
         const fileMap = e.data.fileMap; // { name: ArrayBuffer }
+        currentModelLabel = "local-upload";
         generator = await loadFromFiles(fileMap);
         postMessage({ type: "status", message: "モデル準備完了" });
       } catch (err) {
@@ -351,6 +393,23 @@ ${text_raw}
 `;
 
   llmWorker.postMessage({ type: "run", prompt });
+};
+
+const remoteModelId = document.getElementById("remote_model_id");
+const remoteModelUrl = document.getElementById("remote_model_url");
+remoteModelId.oninput = () => {
+  const value = remoteModelId.value.trim() || "onnx-community/Qwen2.5-0.5B-Instruct";
+  remoteModelUrl.href = `https://huggingface.co/${value}`;
+  remoteModelUrl.textContent = `https://huggingface.co/${value}`;
+};
+
+document.getElementById("loadRemoteModel").onclick = async () => {
+  const modelId = remoteModelId.value.trim();
+  if (!modelId) {
+    toast("Model ID を入力してください");
+    return;
+  }
+  llmWorker.postMessage({ type: "load-remote", modelId });
 };
 
 /* IndexedDB */
