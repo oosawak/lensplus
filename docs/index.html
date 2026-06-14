@@ -6,145 +6,456 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
-  body { font-family: sans-serif; padding: 16px; background: #fafafa; }
-  h2 { margin-top: 24px; }
+  :root {
+    --bg: #0c1118;
+    --bg-soft: #121a26;
+    --panel: rgba(18, 26, 38, 0.82);
+    --panel-strong: rgba(21, 31, 45, 0.95);
+    --line: rgba(255, 255, 255, 0.09);
+    --text: #e8eef7;
+    --muted: #9fb0c7;
+    --accent: #7ee0c2;
+    --accent-2: #7aa7ff;
+    --warn: #ffc96b;
+    --danger: #ff8b8b;
+    --shadow: 0 22px 60px rgba(0, 0, 0, 0.35);
+    --radius: 22px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    color: var(--text);
+    font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    background:
+      radial-gradient(circle at top left, rgba(122, 167, 255, 0.16), transparent 26%),
+      radial-gradient(circle at 80% 20%, rgba(126, 224, 194, 0.12), transparent 22%),
+      linear-gradient(180deg, #091019 0%, #0d1320 45%, #0b1017 100%);
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: linear-gradient(180deg, rgba(0,0,0,0.6), transparent 85%);
+    pointer-events: none;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  a:hover { text-decoration: underline; }
+
+  .shell {
+    width: min(1120px, calc(100% - 24px));
+    margin: 0 auto;
+    padding: 18px 0 40px;
+  }
+
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding: 28px 24px 22px;
+    margin: 8px 0 18px;
+    border: 1px solid var(--line);
+    border-radius: calc(var(--radius) + 6px);
+    background: linear-gradient(180deg, rgba(18, 26, 38, 0.9), rgba(15, 22, 34, 0.78));
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(14px);
+  }
+
+  .hero::after {
+    content: "";
+    position: absolute;
+    inset: auto -16px -22px auto;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(126, 224, 194, 0.24), transparent 68%);
+    filter: blur(10px);
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid rgba(126, 224, 194, 0.24);
+    border-radius: 999px;
+    color: var(--accent);
+    background: rgba(126, 224, 194, 0.08);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .hero h1 {
+    margin: 14px 0 8px;
+    font-size: clamp(28px, 4vw, 44px);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+  }
+
+  .hero p {
+    margin: 0;
+    max-width: 70ch;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 16px;
+  }
+
+  .stack {
+    display: grid;
+    gap: 16px;
+  }
+
   .card {
-    background: #fff;
-    border-radius: 12px;
-    padding: 12px;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(14px);
   }
-  img.thumb { width: 120px; border-radius: 8px; }
-  textarea { width: 100%; height: 120px; padding: 8px; }
-  input, button {
-    font-size: 16px;
-    padding: 10px;
-    margin: 6px 0;
+
+  .card h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+  }
+
+  .card h3, .card h4 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    color: #f1f5fb;
+  }
+
+  .card p {
+    color: var(--muted);
+    line-height: 1.7;
+    margin: 8px 0 12px;
+  }
+
+  .card label {
+    display: block;
+    margin: 10px 0 6px;
+    color: #cfe0f5;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  img.thumb {
+    width: 128px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.28);
+  }
+
+  textarea, input {
     width: 100%;
-    border-radius: 8px;
-    border: 1px solid #ccc;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(8, 12, 18, 0.72);
+    color: var(--text);
+    padding: 12px 14px;
+    font-size: 15px;
     box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
   }
+
+  textarea {
+    min-height: 128px;
+    resize: vertical;
+    line-height: 1.6;
+  }
+
+  textarea:focus, input:focus {
+    border-color: rgba(126, 224, 194, 0.65);
+    box-shadow: 0 0 0 4px rgba(126, 224, 194, 0.12);
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: #7688a0;
+  }
+
   button {
-    background: #007bff;
-    color: white;
-    border: none;
+    width: 100%;
+    margin: 6px 0 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(135deg, #7aa7ff 0%, #6ee7c8 100%);
+    color: #07111b;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    box-shadow: 0 12px 24px rgba(122, 167, 255, 0.18);
+    cursor: pointer;
+    transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
   }
-  button:active { opacity: 0.7; }
+
+  button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 32px rgba(122, 167, 255, 0.24);
+    filter: saturate(1.05);
+  }
+
+  button:active { transform: translateY(0); filter: brightness(0.96); }
+
+  #process, #save, #runLLM {
+    background: linear-gradient(135deg, #f9c46b 0%, #ff8b8b 100%);
+  }
+
+  #loadRemoteModel, #loadModel {
+    background: linear-gradient(135deg, #6ee7c8 0%, #7aa7ff 100%);
+  }
 
   #toast {
     position: fixed;
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: #333;
+    background: rgba(8, 12, 18, 0.92);
     color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
+    padding: 12px 18px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px;
     opacity: 0;
-    transition: opacity 0.4s;
+    transition: opacity 0.35s, transform 0.35s;
     z-index: 9999;
+    box-shadow: var(--shadow);
+    pointer-events: none;
   }
 
-  .row { display: flex; gap: 8px; flex-wrap: wrap; }
-  .row > * { flex: 1 1 120px; }
+  .row {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .row.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .row > * { min-width: 0; }
+
+  .subtle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 8px;
+  }
+
+  .file-box {
+    display: block;
+    margin-top: 8px;
+  }
+
+  .file-box input[type="file"] {
+    margin-top: 6px;
+  }
+
+  #list {
+    display: grid;
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  #list .card {
+    padding: 14px;
+    background: var(--panel-strong);
+  }
+
+  #list .card h3 {
+    margin: 10px 0 4px;
+    font-size: 18px;
+  }
+
+  #list .card p {
+    margin: 0 0 10px;
+  }
+
+  #list .card button {
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    box-shadow: none;
+    border-color: rgba(255,255,255,0.08);
+  }
+
+  #list .card button:hover {
+    background: rgba(255,255,255,0.1);
+  }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    .row { grid-template-columns: 1fr; }
+    .hero { padding: 22px 18px 18px; }
+  }
+
+  @media (max-width: 640px) {
+    .shell { width: min(100% - 16px, 100%); padding: 10px 0 24px; }
+    .card { padding: 15px; border-radius: 18px; }
+    .hero h1 { font-size: 26px; }
+    textarea { min-height: 110px; }
+  }
 </style>
 </head>
 
 <body>
-
 <div id="toast"></div>
 
-<div class="card">
-  <h2>📸 新規登録（画像 → 日本語OCR → LLM）</h2>
+<main class="shell">
+  <header class="hero">
+    <span class="eyebrow">Recipe & Store Info Extractor</span>
+    <h1>スクショ3枚から、レシピと店舗情報を整理する。</h1>
+    <p>
+      この画面ひとつで、画像の読み込み、OCR、LLMによるJSON化、IndexedDBへの保存、タグ検索まで進められます。
+      モバイルでも読みやすいように、コントラストと余白を強めに整えています。
+    </p>
+    <div class="meta-row">
+      <span class="pill">Browser-only</span>
+      <span class="pill">OCR + QR + LLM</span>
+      <span class="pill">IndexedDB</span>
+      <span class="pill">Mobile-friendly</span>
+    </div>
+  </header>
 
-  <div class="row">
-    <div>
-      <label>Thumbnail Image</label>
-      <input id="thumb" type="file" accept="image/*">
+  <div class="grid">
+    <div class="stack">
+      <div class="card">
+        <h2>📸 新規登録</h2>
+        <p>画像を入れてから OCR と LLM を順に実行します。</p>
+
+        <div class="row">
+          <div>
+            <label>Thumbnail Image</label>
+            <input id="thumb" type="file" accept="image/*">
+          </div>
+          <div>
+            <label>Info Image (OCR)</label>
+            <input id="info" type="file" accept="image/*">
+          </div>
+          <div>
+            <label>QR Image</label>
+            <input id="qr" type="file" accept="image/*">
+          </div>
+        </div>
+
+        <button id="process">画像処理（日本語OCR + QR）</button>
+
+        <h3>OCR 結果（日本語）</h3>
+        <textarea id="ocrText" placeholder="OCR 結果がここに入ります"></textarea>
+
+        <h3>LLM JSON 出力</h3>
+        <textarea id="llmJson" placeholder="JSON がここに入ります"></textarea>
+
+        <button id="runLLM">LLM 実行</button>
+        <button id="save">DB に保存</button>
+      </div>
+
+      <div class="card">
+        <h2>📚 保存済みレシピ</h2>
+        <label>タグ検索</label>
+        <input id="tagSearch" placeholder="タグで検索（スペース区切り）">
+        <div class="row two" style="margin-top: 8px;">
+          <button onclick="exportDB()">DB をエクスポート</button>
+          <label class="file-box">
+            <span class="subtle">Import DB</span>
+            <input type="file" id="importFile">
+          </label>
+        </div>
+        <div id="list"></div>
+      </div>
     </div>
-    <div>
-      <label>Info Image (OCR)</label>
-      <input id="info" type="file" accept="image/*">
-    </div>
-    <div>
-      <label>QR Image</label>
-      <input id="qr" type="file" accept="image/*">
+
+    <div class="stack">
+      <div class="card">
+        <h2>🧠 小さいモデルを自動取得</h2>
+        <p>Transformers.js 対応の Hugging Face モデルIDを指定すると、ブラウザが自動でダウンロードします。</p>
+        <label>Model ID</label>
+        <input id="remote_model_id" value="onnx-community/Qwen2.5-0.5B-Instruct">
+        <p>
+          URL:
+          <a id="remote_model_url" href="https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct" target="_blank" rel="noreferrer">
+            https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct
+          </a>
+        </p>
+        <button id="loadRemoteModel">このモデルを自動読み込み</button>
+      </div>
+
+      <div class="card">
+        <h2>🧠 大きいモデルは手動投入</h2>
+        <p>ダウンロードしたモデルを手元で選んで読み込めます。URL は参考用です。</p>
+        <p>
+          例:
+          <a href="https://huggingface.co/Qwen/Qwen2.5-3B-Instruct" target="_blank" rel="noreferrer">
+            https://huggingface.co/Qwen/Qwen2.5-3B-Instruct
+          </a>
+        </p>
+        <p>Qwen2.5-0.5B-Instruct などの小型モデルは上の自動取得を使ってください。</p>
+        <div class="row two">
+          <div>
+            <label>config.json</label>
+            <input id="m_config" type="file" accept=".json">
+          </div>
+          <div>
+            <label>tokenizer.json</label>
+            <input id="m_tokenizer" type="file" accept=".json">
+          </div>
+        </div>
+        <div class="row two">
+          <div>
+            <label>model.safetensors</label>
+            <input id="m_model" type="file" accept=".safetensors">
+          </div>
+          <div>
+            <label>special_tokens_map.json（任意）</label>
+            <input id="m_special" type="file" accept=".json">
+          </div>
+        </div>
+        <div>
+          <label>generation_config.json（任意）</label>
+          <input id="m_gen" type="file" accept=".json">
+        </div>
+
+        <button id="loadModel">ダウンロード済みモデルを読み込む</button>
+      </div>
     </div>
   </div>
-
-  <button id="process">画像処理（日本語OCR + QR）</button>
-
-  <h3>OCR 結果（日本語）</h3>
-  <textarea id="ocrText"></textarea>
-
-  <h3>LLM JSON 出力</h3>
-  <textarea id="llmJson"></textarea>
-
-  <button id="runLLM">LLM 実行</button>
-  <button id="save">DB に保存</button>
-</div>
-
-<div class="card">
-  <h2>🧠 小さいモデルを自動取得</h2>
-  <p>Transformers.js 対応の Hugging Face モデルIDを指定すると、ブラウザが自動でダウンロードします。</p>
-  <label>Model ID</label>
-  <input id="remote_model_id" value="onnx-community/Qwen2.5-0.5B-Instruct">
-  <p>
-    URL:
-    <a id="remote_model_url" href="https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct" target="_blank" rel="noreferrer">
-      https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct
-    </a>
-  </p>
-  <button id="loadRemoteModel">このモデルを自動読み込み</button>
-</div>
-
-<div class="card">
-  <h2>🧠 大きいモデルは手動投入</h2>
-  <p>ダウンロードしたモデルを手元で選んで読み込めます。URL は参考用です。</p>
-  <p>
-    例:
-    <a href="https://huggingface.co/Qwen/Qwen2.5-3B-Instruct" target="_blank" rel="noreferrer">
-      https://huggingface.co/Qwen/Qwen2.5-3B-Instruct
-    </a>
-  </p>
-  <p>Qwen2.5-0.5B-Instruct などの小型モデルは上の自動取得を使ってください。</p>
-  <div class="row">
-    <div>
-      <label>config.json</label>
-      <input id="m_config" type="file" accept=".json">
-    </div>
-    <div>
-      <label>tokenizer.json</label>
-      <input id="m_tokenizer" type="file" accept=".json">
-    </div>
-  </div>
-  <div class="row">
-    <div>
-      <label>model.safetensors</label>
-      <input id="m_model" type="file" accept=".safetensors">
-    </div>
-    <div>
-      <label>special_tokens_map.json（任意）</label>
-      <input id="m_special" type="file" accept=".json">
-    </div>
-  </div>
-  <div>
-    <label>generation_config.json（任意）</label>
-    <input id="m_gen" type="file" accept=".json">
-  </div>
-
-  <button id="loadModel">ダウンロード済みモデルを読み込む</button>
-</div>
-
-<div class="card">
-  <h2>📚 保存済みレシピ</h2>
-  <input id="tagSearch" placeholder="タグで検索（スペース区切り）">
-  <button onclick="exportDB()">DB をエクスポート</button>
-  <input type="file" id="importFile">
-  <div id="list"></div>
-</div>
+</main>
 
 <!-- Tesseract.js -->
 <script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
