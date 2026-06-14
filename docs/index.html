@@ -439,8 +439,9 @@
 
         <button id="process">画像処理（日本語OCR + QR）</button>
 
-        <h3>OCR 結果（日本語）</h3>
-        <textarea id="ocrText" placeholder="OCR 結果がここに入ります"></textarea>
+        <h3>Info Text / OCR 結果（日本語）</h3>
+        <textarea id="ocrText" placeholder="Info Image がない場合は、ここにテキストを貼り付けてもOKです"></textarea>
+        <p class="subtle">Info Image があるときは OCR 結果がここに入ります。画像がない場合は、手で貼り付けたテキストをそのまま LLM に渡せます。</p>
 
         <h3>QR URL</h3>
         <input id="extractedUrl" placeholder="QR から抽出した URL" readonly>
@@ -538,6 +539,7 @@ function toast(msg) {
 
 /* 画像を縮小して ImageData にする（OCR/QR 共通） */
 async function fileToImageData(file, maxWidth = 1200) {
+  if (!file) throw new Error("File is required");
   const img = new Image();
   img.src = URL.createObjectURL(file);
   await img.decode();
@@ -637,30 +639,40 @@ document.querySelectorAll(".drop-zone").forEach((zone) => {
 document.getElementById("process").onclick = async () => {
   const info = document.getElementById("info").files[0];
   const qr = document.getElementById("qr").files[0];
+  const existingText = document.getElementById("ocrText").value.trim();
+  const textField = document.getElementById("ocrText");
+  const urlField = document.getElementById("extractedUrl");
 
-  if (!info) {
-    toast("Info Image（OCR用画像）を選択してください");
-    return;
-  }
-
-  if (!qr) {
-    toast("QR Image を選択してください");
+  if (!info && !existingText) {
+    toast("Info Image か OCR テキストのどちらかを用意してください");
     return;
   }
 
   try {
-    toast("日本語OCR 実行中...");
-    const imgData = await fileToImageData(info);
-    const ocr = await Tesseract.recognize(imgData, "jpn", {
-      langPath: "./langs"
-    });
-    document.getElementById("ocrText").value = ocr.data.text;
+    if (info) {
+      toast("日本語OCR 実行中...");
+      const imgData = await fileToImageData(info);
+      const ocr = await Tesseract.recognize(imgData, "jpn", {
+        langPath: "./langs"
+      });
+      textField.value = ocr.data.text;
+    }
 
-    toast("QR 読み取り中...");
-    const url = await decodeQR(qr);
-    document.getElementById("extractedUrl").value = url || "";
+    if (qr) {
+      toast("QR 読み取り中...");
+      const url = await decodeQR(qr);
+      urlField.value = url || "";
+    }
 
-    toast(url ? "日本語OCR / QR 完了" : "日本語OCR 完了（QR は未検出）");
+    if (info && qr) {
+      toast("日本語OCR / QR 完了");
+    } else if (info) {
+      toast("日本語OCR 完了");
+    } else if (qr) {
+      toast("QR 読み取り完了");
+    } else {
+      toast("入力テキストをそのまま使います");
+    }
   } catch (err) {
     console.error(err);
     toast("OCR / QR エラー: " + (err.message || err));
@@ -837,9 +849,11 @@ document.getElementById("save").onclick = async () => {
   const thumb = document.getElementById("thumb").files[0];
   const info = document.getElementById("info").files[0];
   const qr = document.getElementById("qr").files[0];
+  const ocrText = document.getElementById("ocrText").value.trim();
+  const extractedUrl = document.getElementById("extractedUrl").value.trim();
 
-  if (!thumb || !info || !qr) {
-    toast("Thumbnail / Info / QR 画像は必須です");
+  if (!thumb && !info && !ocrText) {
+    toast("Thumbnail / Info Image / OCR テキストのどれかは必要です");
     return;
   }
 
@@ -859,11 +873,11 @@ document.getElementById("save").onclick = async () => {
 
   const entry = {
     id: crypto.randomUUID(),
-    thumbnail_image: await compressImage(thumb, 300, 0.7),
-    info_image: await compressImage(info, 800, 0.7),
-    qr_image: await compressImage(qr, 800, 0.7),
-    url: document.getElementById("extractedUrl").value.trim() || null,
-    text_raw: document.getElementById("ocrText").value,
+    thumbnail_image: thumb ? await compressImage(thumb, 300, 0.7) : null,
+    info_image: info ? await compressImage(info, 800, 0.7) : null,
+    qr_image: qr ? await compressImage(qr, 800, 0.7) : null,
+    url: extractedUrl || null,
+    text_raw: ocrText,
     recipe: parsed.recipe || {},
     store: parsed.store || {},
     created_at: new Date().toISOString()
@@ -891,10 +905,21 @@ async function renderList() {
     const div = document.createElement("div");
     div.className = "card";
 
-    const thumb = document.createElement("img");
-    thumb.className = "thumb";
-    thumb.src = r.thumbnail_image;
-    div.appendChild(thumb);
+    if (r.thumbnail_image) {
+      const thumb = document.createElement("img");
+      thumb.className = "thumb";
+      thumb.src = r.thumbnail_image;
+      div.appendChild(thumb);
+    } else {
+      const placeholder = document.createElement("div");
+      placeholder.className = "drop-hint";
+      placeholder.textContent = "Thumbnail なし";
+      placeholder.style.padding = "12px 14px";
+      placeholder.style.border = "1px dashed rgba(255,255,255,0.14)";
+      placeholder.style.borderRadius = "14px";
+      placeholder.style.display = "inline-flex";
+      div.appendChild(placeholder);
+    }
 
     const title = document.createElement("h3");
     title.textContent = r.recipe?.title || "(タイトルなし)";
