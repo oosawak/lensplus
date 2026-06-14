@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Recipe Saver (日本語OCR + モデルアップロード)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+  body { font-family: sans-serif; padding: 16px; background: #fafafa; }
+  h2 { margin-top: 24px; }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  }
+  img.thumb { width: 120px; border-radius: 8px; }
+  textarea { width: 100%; height: 120px; padding: 8px; }
+  input, button {
+    font-size: 16px;
+    padding: 10px;
+    margin: 6px 0;
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+  }
+  button {
+    background: #007bff;
+    color: white;
+    border: none;
+  }
+  button:active { opacity: 0.7; }
+
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 0.4s;
+    z-index: 9999;
+  }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 120px; }
+</style>
+</head>
+
+<body>
+
+<div id="toast"></div>
+
+<div class="card">
+  <h2>📸 新規登録（画像 → 日本語OCR → LLM）</h2>
+
+  <div class="row">
+    <div>
+      <label>Thumbnail Image</label>
+      <input id="thumb" type="file" accept="image/*">
+    </div>
+    <div>
+      <label>Info Image (OCR)</label>
+      <input id="info" type="file" accept="image/*">
+    </div>
+    <div>
+      <label>QR Image</label>
+      <input id="qr" type="file" accept="image/*">
+    </div>
+  </div>
+
+  <button id="process">画像処理（日本語OCR + QR）</button>
+
+  <h3>OCR 結果（日本語）</h3>
+  <textarea id="ocrText"></textarea>
+
+  <h3>LLM JSON 出力</h3>
+  <textarea id="llmJson"></textarea>
+
+  <button id="runLLM">ローカル LLM 実行</button>
+  <button id="save">DB に保存</button>
+</div>
+
+<div class="card">
+  <h2>🧠 モデルアップロード（ローカルのみ）</h2>
+  <p>Qwen2.5-0.5B-Instruct のファイルをローカルから選択してください。</p>
+  <div class="row">
+    <div>
+      <label>config.json</label>
+      <input id="m_config" type="file" accept=".json">
+    </div>
+    <div>
+      <label>tokenizer.json</label>
+      <input id="m_tokenizer" type="file" accept=".json">
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>model.safetensors</label>
+      <input id="m_model" type="file" accept=".safetensors">
+    </div>
+    <div>
+      <label>special_tokens_map.json（任意）</label>
+      <input id="m_special" type="file" accept=".json">
+    </div>
+  </div>
+  <div>
+    <label>generation_config.json（任意）</label>
+    <input id="m_gen" type="file" accept=".json">
+  </div>
+
+  <button id="loadModel">モデルを読み込む</button>
+</div>
+
+<div class="card">
+  <h2>📚 保存済みレシピ</h2>
+  <input id="tagSearch" placeholder="タグで検索（スペース区切り）">
+  <button onclick="exportDB()">DB をエクスポート</button>
+  <input type="file" id="importFile">
+  <div id="list"></div>
+</div>
+
+<!-- Tesseract.js -->
+<script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+
+<!-- transformers.js（本体のみCDNから。モデルはアップロード） -->
+<script src="https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js"></script>
+
+<!-- LLM Worker（モデルアップロード対応） -->
+<script id="llm-worker" type="javascript/worker">
+  importScripts("https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js");
+
+  let generator = null;
+
+  async function loadFromFiles(fileMap) {
+    // fileMap: { "config.json": ArrayBuffer, "tokenizer.json": ArrayBuffer, ... }
+    const fs = {
+      async readFile(path) {
+        const buf = fileMap[path];
+        if (!buf) throw new Error("File not found: " + path);
+        return new Uint8Array(buf);
+      },
+      async readdir() {
+        return Object.keys(fileMap);
+      },
+      async stat(path) {
+        if (!fileMap[path]) throw new Error("File not found: " + path);
+        return { size: fileMap[path].byteLength };
+      }
+    };
+
+    const model = await transformers.AutoModelForCausalLM.from_pretrained(
+      "local-model",
+      {
+        model_file: "model.safetensors",
+        config_file: "config.json",
+        file_system: fs,
+        dtype: "q4"
+      }
+    );
+
+    const tokenizer = await transformers.AutoTokenizer.from_pretrained(
+      "local-tokenizer",
+      {
+        tokenizer_file: "tokenizer.json",
+        file_system: fs
+      }
+    );
+
+    return await transformers.pipeline("text-generation", model, tokenizer);
+  }
+
+  function extractJSON(text) {
+    const match = text.match(/\{[\s\S]*\}/);
+    return match ? match[0] : null;
+  }
+
+  onmessage = async (e) => {
+    const { type } = e.data;
+
+    if (type === "load-model") {
+      try {
+        postMessage({ type: "status", message: "モデル読み込み中..." });
+        const fileMap = e.data.fileMap; // { name: ArrayBuffer }
+        generator = await loadFromFiles(fileMap);
+        postMessage({ type: "status", message: "モデル準備完了" });
+      } catch (err) {
+        postMessage({ type: "error", message: err.message || String(err) });
+      }
+      return;
+    }
+
+    if (type === "run") {
+      if (!generator) {
+        postMessage({ type: "error", message: "モデルが読み込まれていません" });
+        return;
+      }
+      try {
+        postMessage({ type: "status", message: "LLM 実行中..." });
+        const out = await generator(e.data.prompt, { max_new_tokens: 120 });
+        const raw = out[0].generated_text;
+        const json = extractJSON(raw);
+        if (!json) {
+          postMessage({ type: "error", message: "JSON が見つかりませんでした" });
+          return;
+        }
+        postMessage({ type: "result", json });
+      } catch (err) {
+        postMessage({ type: "error", message: err.message || String(err) });
+      }
+    }
+  };
+</script>
+
+<script>
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.style.opacity = 1;
+  setTimeout(() => t.style.opacity = 0, 2000);
+}
+
+/* 画像を縮小して ImageData にする（OCR/QR 共通） */
+async function fileToImageData(file, maxWidth = 1200) {
+  const img = new Image();
+  img.src = URL.createObjectURL(file);
+  await img.decode();
+
+  const w = Math.min(maxWidth, img.naturalWidth);
+  const h = img.naturalHeight * (w / img.naturalWidth);
+
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+
+  return ctx.getImageData(0, 0, c.width, c.height);
+}
+
+/* 日本語 OCR + QR（QR は URL 抽出だけなら後で追加でもOK。ここでは OCR に集中） */
+document.getElementById("process").onclick = async () => {
+  const info = document.getElementById("info").files[0];
+
+  if (!info) {
+    toast("Info Image（OCR用画像）を選択してください");
+    return;
+  }
+
+  try {
+    toast("日本語OCR 実行中...");
+    const imgData = await fileToImageData(info);
+    const ocr = await Tesseract.recognize(imgData, "jpn", {
+      langPath: "./langs"
+    });
+    document.getElementById("ocrText").value = ocr.data.text;
+    toast("日本語OCR 完了");
+  } catch (err) {
+    console.error(err);
+    toast("OCR エラー: " + (err.message || err));
+  }
+};
+
+/* LLM Worker 準備 */
+const workerBlob = new Blob(
+  [document.querySelector("#llm-worker").textContent],
+  { type: "text/javascript" }
+);
+const workerURL = URL.createObjectURL(workerBlob);
+const llmWorker = new Worker(workerURL);
+
+llmWorker.onmessage = (e) => {
+  const { type, message, json } = e.data;
+  if (type === "status") toast(message);
+  if (type === "error") toast("LLM エラー: " + message);
+  if (type === "result") {
+    document.getElementById("llmJson").value = json;
+    toast("LLM JSON 生成完了");
+  }
+};
+
+llmWorker.onerror = (e) => {
+  toast("Worker エラー: " + e.message);
+};
+
+/* モデルアップロード → Worker に渡す */
+document.getElementById("loadModel").onclick = async () => {
+  const f_config = document.getElementById("m_config").files[0];
+  const f_tokenizer = document.getElementById("m_tokenizer").files[0];
+  const f_model = document.getElementById("m_model").files[0];
+  const f_special = document.getElementById("m_special").files[0];
+  const f_gen = document.getElementById("m_gen").files[0];
+
+  if (!f_config || !f_tokenizer || !f_model) {
+    toast("config.json / tokenizer.json / model.safetensors は必須です");
+    return;
+  }
+
+  const fileMap = {};
+  async function addFile(name, file) {
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+    fileMap[name] = buf;
+  }
+
+  await addFile("config.json", f_config);
+  await addFile("tokenizer.json", f_tokenizer);
+  await addFile("model.safetensors", f_model);
+  await addFile("special_tokens_map.json", f_special);
+  await addFile("generation_config.json", f_gen);
+
+  llmWorker.postMessage({ type: "load-model", fileMap });
+};
+
+/* LLM 実行 */
+document.getElementById("runLLM").onclick = () => {
+  const text_raw = document.getElementById("ocrText").value.trim();
+  if (!text_raw) {
+    toast("OCR テキストが空です");
+    return;
+  }
+
+  const prompt = `
+以下の日本語テキストから、レシピ情報と店舗情報を抽出して JSON で出力してください。
+出力は JSON のみで、余計な文章は書かないでください。
+
+期待する JSON の例:
+{
+  "recipe": {
+    "title": "料理名",
+    "ingredients": ["材料1", "材料2"],
+    "steps": ["手順1", "手順2"],
+    "tags": ["タグ1", "タグ2"]
+  },
+  "store": {
+    "name": "店名",
+    "address": "住所",
+    "phone": "電話番号",
+    "hours": "営業時間",
+    "notes": "メモ"
+  }
+}
+
+テキスト:
+${text_raw}
+`;
+
+  llmWorker.postMessage({ type: "run", prompt });
+};
+
+/* IndexedDB */
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("recipesDB", 2);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("recipes")) {
+        db.createObjectStore("recipes", { keyPath: "id" });
+      }
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function saveEntry(entry) {
+  const db = await openDB();
+  const tx = db.transaction("recipes", "readwrite");
+  tx.objectStore("recipes").put(entry);
+}
+
+async function loadAll() {
+  const db = await openDB();
+  const tx = db.transaction("recipes", "readonly");
+  const req = tx.objectStore("recipes").getAll();
+  return new Promise((res) => (req.onsuccess = () => res(req.result)));
+}
+
+async function deleteEntry(id) {
+  const db = await openDB();
+  const tx = db.transaction("recipes", "readwrite");
+  tx.objectStore("recipes").delete(id);
+  toast("削除しました");
+}
+
+/* 画像を Base64 に圧縮保存 */
+async function compressImage(file, maxWidth = 800, quality = 0.7) {
+  const img = new Image();
+  img.src = URL.createObjectURL(file);
+  await img.decode();
+
+  const w = Math.min(maxWidth, img.naturalWidth);
+  const h = img.naturalHeight * (w / img.naturalWidth);
+
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+
+  return c.toDataURL("image/jpeg", quality);
+}
+
+/* DB 保存 */
+document.getElementById("save").onclick = async () => {
+  const thumb = document.getElementById("thumb").files[0];
+  const info = document.getElementById("info").files[0];
+
+  if (!thumb || !info) {
+    toast("Thumbnail と Info 画像は必須です");
+    return;
+  }
+
+  const jsonText = document.getElementById("llmJson").value.trim();
+  if (!jsonText) {
+    toast("LLM JSON が空です");
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    toast("JSON の形式が不正です");
+    return;
+  }
+
+  const entry = {
+    id: crypto.randomUUID(),
+    thumbnail_image: await compressImage(thumb, 300, 0.7),
+    info_image: await compressImage(info, 800, 0.7),
+    url: null,
+    text_raw: document.getElementById("ocrText").value,
+    recipe: parsed.recipe || {},
+    store: parsed.store || {},
+    created_at: new Date().toISOString()
+  };
+
+  await saveEntry(entry);
+  toast("保存しました");
+  renderList();
+};
+
+/* 一覧表示 + タグ検索 */
+async function renderList() {
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  const all = await loadAll();
+  const q = document.getElementById("tagSearch").value.trim().toLowerCase();
+  const tags = q.split(/\s+/).filter(Boolean);
+
+  all.forEach((r) => {
+    const entryTags = (r.recipe?.tags || []).map((t) => t.toLowerCase());
+    const match = tags.every((t) => entryTags.some((x) => x.includes(t)));
+    if (tags.length && !match) return;
+
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = `
+      <img class="thumb" src="${r.thumbnail_image}">
+      <h3>${r.recipe?.title || "(タイトルなし)"}</h3>
+      <p><b>${r.store?.name || ""}</b></p>
+      <button onclick='edit("${r.id}")'>編集</button>
+      <button onclick='deleteEntry("${r.id}").then(renderList)'>削除</button>
+    `;
+    list.appendChild(div);
+  });
+}
+
+document.getElementById("tagSearch").oninput = renderList;
+
+/* 編集 */
+window.edit = async (id) => {
+  const all = await loadAll();
+  const r = all.find((x) => x.id === id);
+  if (!r) return;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "card";
+  wrapper.innerHTML = `
+    <h3>編集</h3>
+
+    <label>タイトル</label>
+    <input id="e_title" value="${r.recipe.title || ""}">
+
+    <label>材料（1行1つ）</label>
+    <textarea id="e_ing">${(r.recipe.ingredients || []).join("\n")}</textarea>
+
+    <label>手順（1行1つ）</label>
+    <textarea id="e_steps">${(r.recipe.steps || []).join("\n")}</textarea>
+
+    <label>タグ（スペース区切り）</label>
+    <input id="e_tags" value="${(r.recipe.tags || []).join(" ")}">
+
+    <h4>店舗情報</h4>
+
+    <label>店名</label>
+    <input id="e_sname" value="${r.store.name || ""}">
+
+    <label>住所</label>
+    <input id="e_addr" value="${r.store.address || ""}">
+
+    <label>電話番号</label>
+    <input id="e_phone" value="${r.store.phone || ""}">
+
+    <label>営業時間</label>
+    <input id="e_hours" value="${r.store.hours || ""}">
+
+    <label>メモ</label>
+    <textarea id="e_notes">${r.store.notes || ""}</textarea>
+
+    <button id="e_save">保存</button>
+  `;
+  document.body.prepend(wrapper);
+
+  document.getElementById("e_save").onclick = async () => {
+    r.recipe.title = document.getElementById("e_title").value;
+    r.recipe.ingredients = document.getElementById("e_ing").value.split("\n").filter(Boolean);
+    r.recipe.steps = document.getElementById("e_steps").value.split("\n").filter(Boolean);
+    r.recipe.tags = document.getElementById("e_tags").value.split(/\s+/).filter(Boolean);
+
+    r.store.name = document.getElementById("e_sname").value;
+    r.store.address = document.getElementById("e_addr").value;
+    r.store.phone = document.getElementById("e_phone").value;
+    r.store.hours = document.getElementById("e_hours").value;
+    r.store.notes = document.getElementById("e_notes").value;
+
+    await saveEntry(r);
+    toast("更新しました");
+    location.reload();
+  };
+};
+
+/* Export / Import */
+async function exportDB() {
+  const all = await loadAll();
+  const blob = new Blob([JSON.stringify(all, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "recipes_backup.json";
+  a.click();
+  toast("エクスポートしました");
+}
+
+async function importDB(file) {
+  const text = await file.text();
+  const arr = JSON.parse(text);
+  for (const entry of arr) {
+    await saveEntry(entry);
+  }
+  toast("インポートしました");
+  renderList();
+}
+
+document.getElementById("importFile").onchange = (e) => {
+  const file = e.target.files[0];
+  if (file) importDB(file);
+};
+
+renderList();
+</script>
+
+</body>
+</html>
