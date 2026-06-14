@@ -338,6 +338,106 @@
     margin-top: 4px;
   }
 
+  .capture-btn {
+    padding: 8px 10px;
+    margin-top: 2px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .capture-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .capture-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(4, 8, 14, 0.82);
+    backdrop-filter: blur(14px);
+    z-index: 10000;
+  }
+
+  .capture-modal.is-open {
+    display: flex;
+  }
+
+  .capture-dialog {
+    width: min(1120px, 100%);
+    max-height: min(94vh, 980px);
+    overflow: auto;
+    padding: 18px;
+    border-radius: 24px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: linear-gradient(180deg, rgba(18, 26, 38, 0.98), rgba(13, 20, 30, 0.98));
+    box-shadow: var(--shadow);
+  }
+
+  .capture-dialog h3 {
+    margin: 0 0 8px;
+    font-size: 20px;
+  }
+
+  .capture-dialog p {
+    margin: 0 0 10px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .capture-stage {
+    position: relative;
+    margin-top: 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: #05080d;
+    overflow: hidden;
+  }
+
+  .capture-video,
+  .capture-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 68vh;
+    object-fit: contain;
+    background: #05080d;
+  }
+
+  .capture-canvas {
+    cursor: crosshair;
+  }
+
+  .capture-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .capture-toolbar button {
+    width: auto;
+    flex: 1 1 180px;
+  }
+
+  .capture-status {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--warn);
+  }
+
+  .capture-note {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
   #list {
     display: grid;
     gap: 14px;
@@ -444,7 +544,11 @@
         <p class="subtle">Info Image があるときは OCR 結果がここに入ります。画像がない場合は、手で貼り付けたテキストをそのまま LLM に渡せます。</p>
 
         <h3>QR URL</h3>
-        <input id="extractedUrl" placeholder="QR から抽出した URL" readonly>
+        <div class="row two">
+          <input id="extractedUrl" placeholder="QR から抽出した URL、または手入力の URL">
+          <button id="copyUrlBtn" type="button">URL をコピー</button>
+        </div>
+        <p class="subtle">QR が出ないときは、この欄に URL を貼って保存できます。</p>
 
         <h3>LLM JSON 出力</h3>
         <textarea id="llmJson" placeholder="JSON がここに入ります"></textarea>
@@ -790,6 +894,25 @@ document.getElementById("loadRemoteModel").onclick = async () => {
   }
   llmWorker.postMessage({ type: "load-remote", modelId });
 };
+
+document.getElementById("copyUrlBtn").addEventListener("click", async () => {
+  const url = document.getElementById("extractedUrl").value.trim();
+  if (!url) {
+    toast("コピーする URL がありません");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("URL をコピーしました");
+  } catch {
+    const input = document.getElementById("extractedUrl");
+    input.focus();
+    input.select();
+    const ok = document.execCommand("copy");
+    toast(ok ? "URL をコピーしました" : "コピーに失敗しました");
+  }
+});
 
 /* IndexedDB */
 function openDB() {
