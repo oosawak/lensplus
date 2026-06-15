@@ -1,4 +1,4 @@
-importScripts("https://cdn.jsdelivr.net/npm/@huggingface/transformers/dist/transformers.min.js");
+importScripts("./vendor/transformers.min.js?v=20260615-1");
 
 const transformersLib = self.transformers || transformers;
 const {
