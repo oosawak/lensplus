@@ -23,7 +23,7 @@
 - [x] モデル読み込みボタンを起動時に点滅させる
 - [x] モデルを実ダウンロードして進捗バーを表示する
 - [x] モデル読み込みの trace ログを表示する
-- [x] worker 初期化失敗を避けるため classic worker に戻す
+- [ ] worker を module 化してローカル transformers ESM を読み込む
 - [ ] モバイルでの使い勝手を確認する
 
 ## Next

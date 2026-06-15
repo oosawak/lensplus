@@ -862,7 +862,7 @@ const modelStatus = document.getElementById("modelStatus");
 const modelProgress = document.getElementById("modelProgress");
 const modelProgressText = document.getElementById("modelProgressText");
 const modelTrace = document.getElementById("modelTrace");
-const workerScriptUrl = "./llm-worker.js?v=20260615-2";
+const workerScriptUrl = "./llm-worker.js?v=20260615-4";
 
 function appendModelTrace(line) {
   if (!modelTrace) return;
@@ -915,7 +915,7 @@ function finishModelProgress(success) {
 }
 
 try {
-  llmWorker = new Worker(workerScriptUrl);
+  llmWorker = new Worker(workerScriptUrl, { type: "module" });
 
   llmWorker.onmessage = (e) => {
     const { type, message, json } = e.data;
