@@ -1053,6 +1053,8 @@ try {
     }
     if (type === "result") {
       document.getElementById("llmJson").value = json;
+      if (modelStatus) modelStatus.textContent = "モデル状態: LLM JSON 生成完了";
+      appendModelTrace("status: LLM JSON 生成完了");
       toast("LLM JSON 生成完了");
       setRunLLMBusy(false);
       stopLLMElapsed();
