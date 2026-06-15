@@ -585,6 +585,8 @@
           </a>
         </p>
         <button id="loadRemoteModel">このモデルを自動読み込み</button>
+        <p id="modelStatus" class="subtle">モデル状態: 未読み込み</p>
+        <p class="subtle">ページ起動時にも 0.5B を自動で読み込みます。重いと感じたら手動ボタンだけに切り替えられます。</p>
       </div>
 
       <div class="card">
@@ -785,13 +787,20 @@ document.getElementById("process").onclick = async () => {
 
 /* LLM Worker 準備 */
 let llmWorker = null;
+const modelStatus = document.getElementById("modelStatus");
 try {
   llmWorker = new Worker("./llm-worker.js", { type: "module" });
 
   llmWorker.onmessage = (e) => {
     const { type, message, json } = e.data;
-    if (type === "status") toast(message);
-    if (type === "error") toast("LLM エラー: " + message);
+    if (type === "status") {
+      toast(message);
+      if (modelStatus) modelStatus.textContent = `モデル状態: ${message}`;
+    }
+    if (type === "error") {
+      toast("LLM エラー: " + message);
+      if (modelStatus) modelStatus.textContent = `モデル状態: エラー - ${message}`;
+    }
     if (type === "result") {
       document.getElementById("llmJson").value = json;
       toast("LLM JSON 生成完了");
@@ -892,8 +901,19 @@ document.getElementById("loadRemoteModel").onclick = async () => {
     toast("Model ID を入力してください");
     return;
   }
+  if (modelStatus) modelStatus.textContent = "モデル状態: 読み込み開始...";
   llmWorker.postMessage({ type: "load-remote", modelId });
 };
+
+const defaultModelId = remoteModelId.value.trim() || "onnx-community/Qwen2.5-0.5B-Instruct";
+window.addEventListener("load", () => {
+  if (!llmWorker) return;
+  remoteModelId.value = defaultModelId;
+  remoteModelUrl.href = `https://huggingface.co/${defaultModelId}`;
+  remoteModelUrl.textContent = `https://huggingface.co/${defaultModelId}`;
+  if (modelStatus) modelStatus.textContent = "モデル状態: 起動時の自動読み込みを開始...";
+  llmWorker.postMessage({ type: "load-remote", modelId: defaultModelId });
+});
 
 document.getElementById("copyUrlBtn").addEventListener("click", async () => {
   const url = document.getElementById("extractedUrl").value.trim();
