@@ -1089,8 +1089,8 @@ document.getElementById("loadRemoteModel").onclick = async () => {
     loadRemoteModelBtn.classList.remove("is-attention");
   }
   if (modelStatus) modelStatus.textContent = "モデル状態: 読み込み開始...";
-  appendModelTrace(`request load: ${modelId}`);
   resetModelProgress();
+  appendModelTrace(`request load: ${modelId}`);
   startModelProgress();
   llmWorker.postMessage({ type: "load-remote", modelId });
 };
