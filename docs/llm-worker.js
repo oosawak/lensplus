@@ -84,6 +84,20 @@ function extractJSON(text) {
   return match ? match[0] : null;
 }
 
+function hasTemplateValues(jsonText) {
+  return [
+    '"料理名"',
+    '"材料1"',
+    '"手順1"',
+    '"タグ1"',
+    '"店名"',
+    '"住所"',
+    '"電話番号"',
+    '"営業時間"',
+    '"メモ"'
+  ].some((token) => jsonText.includes(token));
+}
+
 onmessage = async (e) => {
   const { type } = e.data;
 
@@ -123,11 +137,21 @@ onmessage = async (e) => {
     }
     try {
       postMessage({ type: "status", message: "LLM 実行中..." });
-      const out = await generator(e.data.prompt, { max_new_tokens: 120 });
+      const out = await generator(e.data.prompt, {
+        max_new_tokens: 180,
+        do_sample: false,
+        temperature: 0.1,
+        top_p: 1,
+        repetition_penalty: 1.08
+      });
       const raw = out[0].generated_text;
       const json = extractJSON(raw);
       if (!json) {
         postMessage({ type: "error", message: "JSON が見つかりませんでした" });
+        return;
+      }
+      if (hasTemplateValues(json)) {
+        postMessage({ type: "error", message: "テンプレート値が返されました。もう一度実行してください" });
         return;
       }
       postMessage({ type: "result", json });

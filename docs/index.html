@@ -1129,22 +1129,24 @@ document.getElementById("runLLM").onclick = () => {
 
   const prompt = `
 以下の日本語テキストから、レシピ情報と店舗情報を抽出して JSON で出力してください。
-出力は JSON のみで、余計な文章は書かないでください。
+出力は JSON のみです。説明文、箇条書き、Markdown、コードフェンスは書かないでください。
+下の例の文字列はテンプレートです。絶対にそのまま出力しないでください。
+情報がなければ空文字列や空配列にしてください。
 
-期待する JSON の例:
+出力形式:
 {
   "recipe": {
-    "title": "料理名",
-    "ingredients": ["材料1", "材料2"],
-    "steps": ["手順1", "手順2"],
-    "tags": ["タグ1", "タグ2"]
+    "title": "",
+    "ingredients": [],
+    "steps": [],
+    "tags": []
   },
   "store": {
-    "name": "店名",
-    "address": "住所",
-    "phone": "電話番号",
-    "hours": "営業時間",
-    "notes": "メモ"
+    "name": "",
+    "address": "",
+    "phone": "",
+    "hours": "",
+    "notes": ""
   }
 }
 
