@@ -23,7 +23,7 @@
 - [x] モデル読み込みボタンを起動時に点滅させる
 - [x] モデルを実ダウンロードして進捗バーを表示する
 - [x] モデル読み込みの trace ログを表示する
-- [ ] worker を module 化してローカル transformers ESM を読み込む
+- [ ] worker の LLM 読み込みを `pipeline(modelId)` に統一する
 - [ ] モバイルでの使い勝手を確認する
 
 ## Next

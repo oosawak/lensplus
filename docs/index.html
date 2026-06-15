@@ -1039,7 +1039,7 @@ document.getElementById("loadModel").onclick = async () => {
   await addFile("special_tokens_map.json", f_special);
   await addFile("generation_config.json", f_gen);
 
-  llmWorker.postMessage({ type: "load-model", fileMap });
+  llmWorker.postMessage({ type: "load-model", fileMap, modelId: remoteModelId.value.trim() || "onnx-community/Qwen2.5-0.5B-Instruct" });
 };
 
 /* LLM 実行 */

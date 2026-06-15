@@ -52,28 +52,18 @@ async function loadRemoteModel(modelId, onProgress) {
   };
 
   onProgress({ kind: "diagnostic", message: `starting remote model load: ${modelId}` });
-
-  const model = await AutoModelForCausalLM.from_pretrained(modelId, {
+  onProgress({ kind: "diagnostic", message: "building pipeline" });
+  return await pipeline("text-generation", modelId, {
     dtype: "q4",
     progress_callback: (event) => forwardProgress(event, "model")
   });
-
-  onProgress({ kind: "diagnostic", message: "model object created" });
-  const tokenizer = await AutoTokenizer.from_pretrained(modelId, {
-    progress_callback: (event) => forwardProgress(event, "tokenizer")
-  });
-
-  onProgress({ kind: "diagnostic", message: "tokenizer created" });
-  onProgress({ kind: "diagnostic", message: "building pipeline" });
-  return await pipeline("text-generation", model, tokenizer);
 }
 
-async function loadFromFiles(fileMap) {
-  env.allowRemoteModels = false;
+async function loadFromFiles(modelId, fileMap) {
+  env.allowRemoteModels = true;
   env.allowLocalModels = true;
   env.useBrowserCache = true;
 
-  const modelId = "local-upload-model";
   const cache = await caches.open(env.cacheKey);
   const baseUrl = `https://huggingface.co/${modelId}/resolve/main`;
 
@@ -84,10 +74,9 @@ async function loadFromFiles(fileMap) {
     await cache.put(`${baseUrl}/${name}`, new Response(new Uint8Array(buf), { headers }));
   }
 
-  const model = await AutoModelForCausalLM.from_pretrained(modelId);
-  const tokenizer = await AutoTokenizer.from_pretrained(modelId);
-
-  return await pipeline("text-generation", model, tokenizer);
+  return await pipeline("text-generation", modelId, {
+    dtype: "q4"
+  });
 }
 
 function extractJSON(text) {
