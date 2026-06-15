@@ -244,6 +244,28 @@
     background: linear-gradient(135deg, #6ee7c8 0%, #7aa7ff 100%);
   }
 
+  #loadRemoteModel.is-attention {
+    animation: buttonPulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes buttonPulse {
+    0% {
+      transform: translateY(0) scale(1);
+      box-shadow: 0 12px 24px rgba(110, 231, 200, 0.18);
+      filter: saturate(1);
+    }
+    50% {
+      transform: translateY(-1px) scale(1.01);
+      box-shadow: 0 18px 34px rgba(110, 231, 200, 0.34);
+      filter: saturate(1.15);
+    }
+    100% {
+      transform: translateY(0) scale(1);
+      box-shadow: 0 12px 24px rgba(110, 231, 200, 0.18);
+      filter: saturate(1);
+    }
+  }
+
   #toast {
     position: fixed;
     bottom: 20px;
@@ -432,6 +454,35 @@
     color: var(--warn);
   }
 
+  .progress-shell {
+    position: relative;
+    overflow: hidden;
+    height: 10px;
+    margin-top: 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .progress-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #7aa7ff 0%, #6ee7c8 100%);
+    box-shadow: 0 0 18px rgba(110, 231, 200, 0.28);
+    transition: width 0.2s ease;
+  }
+
+  .progress-fill.is-running {
+    background-size: 200% 100%;
+    animation: progressPulse 1.1s linear infinite;
+  }
+
+  @keyframes progressPulse {
+    0% { background-position: 0% 0%; }
+    100% { background-position: 200% 0%; }
+  }
+
   .capture-note {
     margin-top: 10px;
     font-size: 13px;
@@ -584,9 +635,12 @@
             https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct
           </a>
         </p>
-        <button id="loadRemoteModel">このモデルを自動読み込み</button>
+        <button id="loadRemoteModel">このモデルを読み込む</button>
         <p id="modelStatus" class="subtle">モデル状態: 未読み込み</p>
-        <p class="subtle">ページ起動時にも 0.5B を自動で読み込みます。重いと感じたら手動ボタンだけに切り替えられます。</p>
+        <div class="progress-shell" aria-hidden="true">
+          <div id="modelProgress" class="progress-fill"></div>
+        </div>
+        <p class="subtle">ボタンを押したときだけ読み込みます。進捗バーは読み込み中の目安です。</p>
       </div>
 
       <div class="card">
@@ -787,7 +841,49 @@ document.getElementById("process").onclick = async () => {
 
 /* LLM Worker 準備 */
 let llmWorker = null;
+const loadRemoteModelBtn = document.getElementById("loadRemoteModel");
 const modelStatus = document.getElementById("modelStatus");
+const modelProgress = document.getElementById("modelProgress");
+let modelProgressTimer = null;
+
+function resetModelProgress() {
+  if (modelProgressTimer) {
+    clearInterval(modelProgressTimer);
+    modelProgressTimer = null;
+  }
+  if (modelProgress) {
+    modelProgress.classList.remove("is-running");
+    modelProgress.style.width = "0%";
+  }
+}
+
+function startModelProgress() {
+  if (!modelProgress) return;
+  if (modelProgressTimer) clearInterval(modelProgressTimer);
+  modelProgress.classList.add("is-running");
+  modelProgress.style.width = "10%";
+  modelProgressTimer = setInterval(() => {
+    const current = parseFloat(modelProgress.style.width) || 0;
+    if (current < 90) {
+      modelProgress.style.width = `${Math.min(90, current + 6)}%`;
+    }
+  }, 260);
+}
+
+function finishModelProgress(success) {
+  if (!modelProgress) return;
+  if (modelProgressTimer) {
+    clearInterval(modelProgressTimer);
+    modelProgressTimer = null;
+  }
+  modelProgress.classList.remove("is-running");
+  modelProgress.style.width = success ? "100%" : "0%";
+  window.setTimeout(() => {
+    if (!modelProgress) return;
+    modelProgress.style.width = "0%";
+  }, success ? 900 : 250);
+}
+
 try {
   llmWorker = new Worker("./llm-worker.js", { type: "module" });
 
@@ -796,10 +892,17 @@ try {
     if (type === "status") {
       toast(message);
       if (modelStatus) modelStatus.textContent = `モデル状態: ${message}`;
+      if (message.includes("取得中") || message.includes("読み込み中")) {
+        startModelProgress();
+      } else if (message.includes("準備完了")) {
+        finishModelProgress(true);
+      }
     }
     if (type === "error") {
       toast("LLM エラー: " + message);
       if (modelStatus) modelStatus.textContent = `モデル状態: エラー - ${message}`;
+      finishModelProgress(false);
+      if (loadRemoteModelBtn) loadRemoteModelBtn.classList.add("is-attention");
     }
     if (type === "result") {
       document.getElementById("llmJson").value = json;
@@ -812,6 +915,10 @@ try {
   };
 } catch (err) {
   toast("Worker 初期化失敗: " + (err.message || err));
+}
+
+if (loadRemoteModelBtn) {
+  loadRemoteModelBtn.classList.add("is-attention");
 }
 
 /* モデルアップロード → Worker に渡す */
@@ -901,19 +1008,13 @@ document.getElementById("loadRemoteModel").onclick = async () => {
     toast("Model ID を入力してください");
     return;
   }
+  if (loadRemoteModelBtn) {
+    loadRemoteModelBtn.classList.remove("is-attention");
+  }
   if (modelStatus) modelStatus.textContent = "モデル状態: 読み込み開始...";
+  startModelProgress();
   llmWorker.postMessage({ type: "load-remote", modelId });
 };
-
-const defaultModelId = remoteModelId.value.trim() || "onnx-community/Qwen2.5-0.5B-Instruct";
-window.addEventListener("load", () => {
-  if (!llmWorker) return;
-  remoteModelId.value = defaultModelId;
-  remoteModelUrl.href = `https://huggingface.co/${defaultModelId}`;
-  remoteModelUrl.textContent = `https://huggingface.co/${defaultModelId}`;
-  if (modelStatus) modelStatus.textContent = "モデル状態: 起動時の自動読み込みを開始...";
-  llmWorker.postMessage({ type: "load-remote", modelId: defaultModelId });
-});
 
 document.getElementById("copyUrlBtn").addEventListener("click", async () => {
   const url = document.getElementById("extractedUrl").value.trim();
