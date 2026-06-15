@@ -640,6 +640,7 @@
         <div class="progress-shell" aria-hidden="true">
           <div id="modelProgress" class="progress-fill"></div>
         </div>
+        <p id="modelProgressText" class="subtle">進捗: 0%</p>
         <p class="subtle">ボタンを押したときだけ読み込みます。進捗バーは読み込み中の目安です。</p>
       </div>
 
@@ -844,52 +845,44 @@ let llmWorker = null;
 const loadRemoteModelBtn = document.getElementById("loadRemoteModel");
 const modelStatus = document.getElementById("modelStatus");
 const modelProgress = document.getElementById("modelProgress");
-let modelProgressTimer = null;
+const modelProgressText = document.getElementById("modelProgressText");
 
 function resetModelProgress() {
-  if (modelProgressTimer) {
-    clearInterval(modelProgressTimer);
-    modelProgressTimer = null;
-  }
   if (modelProgress) {
     modelProgress.classList.remove("is-running");
     modelProgress.style.width = "0%";
   }
+  if (modelProgressText) modelProgressText.textContent = "進捗: 0%";
 }
 
 function startModelProgress() {
   if (!modelProgress) return;
-  if (modelProgressTimer) clearInterval(modelProgressTimer);
   modelProgress.classList.add("is-running");
-  modelProgress.style.width = "18%";
-  modelProgress.dataset.direction = "1";
-  modelProgressTimer = setInterval(() => {
-    const current = parseFloat(modelProgress.style.width) || 0;
-    const direction = modelProgress.dataset.direction === "-1" ? -1 : 1;
-    let next = current + direction * 7;
-    if (next >= 82) {
-      next = 82;
-      modelProgress.dataset.direction = "-1";
-    } else if (next <= 18) {
-      next = 18;
-      modelProgress.dataset.direction = "1";
-    }
-    modelProgress.style.width = `${next}%`;
-  }, 260);
+  modelProgress.style.width = "0%";
+  if (modelProgressText) modelProgressText.textContent = "進捗: 0%";
+}
+
+function setModelProgress(percent, text) {
+  if (!modelProgress) return;
+  const clamped = Math.max(0, Math.min(100, percent));
+  modelProgress.classList.add("is-running");
+  modelProgress.style.width = `${clamped}%`;
+  if (modelProgressText) {
+    modelProgressText.textContent = text ? `進捗: ${text}` : `進捗: ${Math.round(clamped)}%`;
+  }
 }
 
 function finishModelProgress(success) {
   if (!modelProgress) return;
-  if (modelProgressTimer) {
-    clearInterval(modelProgressTimer);
-    modelProgressTimer = null;
-  }
   modelProgress.classList.remove("is-running");
   modelProgress.style.width = success ? "100%" : "0%";
+  if (modelProgressText) {
+    modelProgressText.textContent = success ? "進捗: 完了" : "進捗: エラー";
+  }
   window.setTimeout(() => {
     if (!modelProgress) return;
     modelProgress.style.width = "0%";
-    delete modelProgress.dataset.direction;
+    if (modelProgressText) modelProgressText.textContent = "進捗: 0%";
   }, success ? 900 : 250);
 }
 
@@ -898,6 +891,33 @@ try {
 
   llmWorker.onmessage = (e) => {
     const { type, message, json } = e.data;
+    if (type === "progress") {
+      if (e.data.phase === "initializing") {
+        setModelProgress(96, "初期化中...");
+        return;
+      }
+      const total = e.data.totalBytes || 0;
+      const loaded = e.data.loadedBytes || 0;
+      const file = e.data.file ? ` / ${e.data.file}` : "";
+      const fileCount = e.data.fileCount || 0;
+      const loadedFiles = e.data.loadedFiles || 0;
+      if (total > 0) {
+        const percent = (loaded / total) * 100;
+        setModelProgress(percent, `${Math.round(percent)}%${file}`);
+      } else if (fileCount > 0) {
+        const fileShare = e.data.fileTotalBytes > 0
+          ? (e.data.fileLoadedBytes / e.data.fileTotalBytes)
+          : (e.data.fileLoadedBytes > 0 ? 1 : 0);
+        const percent = ((loadedFiles + fileShare) / fileCount) * 100;
+        setModelProgress(percent, `${Math.round(percent)}%${file}`);
+      } else if (e.data.fileTotalBytes > 0) {
+        const percent = (e.data.fileLoadedBytes / e.data.fileTotalBytes) * 100;
+        setModelProgress(percent, `${Math.round(percent)}%${file}`);
+      } else {
+        setModelProgress(10, `取得中${file}`);
+      }
+      if (loadRemoteModelBtn) loadRemoteModelBtn.classList.remove("is-attention");
+    }
     if (type === "status") {
       toast(message);
       if (modelStatus) modelStatus.textContent = `モデル状態: ${message}`;
