@@ -248,6 +248,25 @@
     animation: buttonPulse 1.4s ease-in-out infinite;
   }
 
+  #runLLM.is-running {
+    position: relative;
+    overflow: hidden;
+    animation: buttonPulse 0.95s ease-in-out infinite;
+  }
+
+  #runLLM.is-running::after {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-left: 10px;
+    vertical-align: -2px;
+    border: 2px solid rgba(7, 17, 27, 0.28);
+    border-top-color: rgba(7, 17, 27, 0.9);
+    border-radius: 999px;
+    animation: spinnerSpin 0.8s linear infinite;
+  }
+
   @keyframes buttonPulse {
     0% {
       transform: translateY(0) scale(1);
@@ -264,6 +283,11 @@
       box-shadow: 0 12px 24px rgba(110, 231, 200, 0.18);
       filter: saturate(1);
     }
+  }
+
+  @keyframes spinnerSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   #toast {
@@ -503,6 +527,14 @@
     overflow: auto;
   }
 
+  .elapsed-time {
+    margin-top: 10px;
+    color: var(--warn);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+
   #list {
     display: grid;
     gap: 14px;
@@ -619,6 +651,7 @@
         <textarea id="llmJson" placeholder="JSON がここに入ります"></textarea>
 
         <button id="runLLM">LLM 実行</button>
+        <div id="llmElapsed" class="elapsed-time">経過時間: 0.0s</div>
         <button id="save">DB に保存</button>
       </div>
 
@@ -862,7 +895,12 @@ const modelStatus = document.getElementById("modelStatus");
 const modelProgress = document.getElementById("modelProgress");
 const modelProgressText = document.getElementById("modelProgressText");
 const modelTrace = document.getElementById("modelTrace");
+const runLLMBtn = document.getElementById("runLLM");
+const llmElapsed = document.getElementById("llmElapsed");
+const runLLMLabel = runLLMBtn ? runLLMBtn.textContent : "LLM 実行";
 const workerScriptUrl = "./llm-worker.js?v=20260615-4";
+let llmRunStartedAt = 0;
+let llmElapsedTimer = null;
 
 function appendModelTrace(line) {
   if (!modelTrace) return;
@@ -912,6 +950,35 @@ function finishModelProgress(success) {
     modelProgress.style.width = "0%";
     if (modelProgressText) modelProgressText.textContent = "進捗: 0%";
   }, success ? 900 : 250);
+}
+
+function setRunLLMBusy(isBusy) {
+  if (!runLLMBtn) return;
+  runLLMBtn.classList.toggle("is-running", isBusy);
+  runLLMBtn.disabled = isBusy;
+  runLLMBtn.textContent = isBusy ? "LLM 実行中..." : runLLMLabel;
+}
+
+function updateLLMElapsed() {
+  if (!llmElapsed || !llmRunStartedAt) return;
+  const seconds = (performance.now() - llmRunStartedAt) / 1000;
+  llmElapsed.textContent = `経過時間: ${seconds.toFixed(1)}s`;
+}
+
+function startLLMElapsed() {
+  llmRunStartedAt = performance.now();
+  updateLLMElapsed();
+  if (llmElapsedTimer) window.clearInterval(llmElapsedTimer);
+  llmElapsedTimer = window.setInterval(updateLLMElapsed, 100);
+}
+
+function stopLLMElapsed() {
+  if (llmElapsedTimer) {
+    window.clearInterval(llmElapsedTimer);
+    llmElapsedTimer = null;
+  }
+  llmRunStartedAt = 0;
+  if (llmElapsed) llmElapsed.textContent = "経過時間: 0.0s";
 }
 
 try {
@@ -980,11 +1047,15 @@ try {
       if (modelStatus) modelStatus.textContent = `モデル状態: エラー - ${message}`;
       appendModelTrace(`error: ${message}`);
       finishModelProgress(false);
+      setRunLLMBusy(false);
+      stopLLMElapsed();
       if (loadRemoteModelBtn) loadRemoteModelBtn.classList.add("is-attention");
     }
     if (type === "result") {
       document.getElementById("llmJson").value = json;
       toast("LLM JSON 生成完了");
+      setRunLLMBusy(false);
+      stopLLMElapsed();
     }
   };
 
@@ -997,6 +1068,8 @@ try {
     ].filter(Boolean).join(" ");
     toast("Worker エラー: " + detail);
     appendModelTrace(`worker error: ${detail}`);
+    setRunLLMBusy(false);
+    stopLLMElapsed();
   };
   llmWorker.onmessageerror = () => {
     appendModelTrace("worker messageerror");
@@ -1079,6 +1152,8 @@ document.getElementById("runLLM").onclick = () => {
 ${text_raw}
 `;
 
+  setRunLLMBusy(true);
+  startLLMElapsed();
   llmWorker.postMessage({ type: "run", prompt });
 };
 
