@@ -915,7 +915,7 @@ function finishModelProgress(success) {
 }
 
 try {
-  llmWorker = new Worker(workerScriptUrl, { type: "module" });
+  llmWorker = new Worker(workerScriptUrl);
 
   llmWorker.onmessage = (e) => {
     const { type, message, json } = e.data;
@@ -989,8 +989,14 @@ try {
   };
 
   llmWorker.onerror = (e) => {
-    toast("Worker エラー: " + (e.message || "unknown"));
-    appendModelTrace(`worker error: ${e.message || "unknown"}`);
+    const detail = [
+      e.message || "unknown",
+      e.filename ? `file=${e.filename}` : null,
+      typeof e.lineno === "number" ? `line=${e.lineno}` : null,
+      typeof e.colno === "number" ? `col=${e.colno}` : null
+    ].filter(Boolean).join(" ");
+    toast("Worker エラー: " + detail);
+    appendModelTrace(`worker error: ${detail}`);
   };
   llmWorker.onmessageerror = () => {
     appendModelTrace("worker messageerror");

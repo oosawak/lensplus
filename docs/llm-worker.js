@@ -1,9 +1,14 @@
-import {
+importScripts("https://cdn.jsdelivr.net/npm/@huggingface/transformers/dist/transformers.min.js");
+
+const transformersLib = self.transformers || transformers;
+const {
   pipeline,
   env,
   AutoModelForCausalLM,
   AutoTokenizer
-} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers/dist/transformers.web.js";
+} = transformersLib;
+
+postMessage({ type: "diagnostic", message: "worker script loaded" });
 
 let generator = null;
 let currentModelLabel = null;
