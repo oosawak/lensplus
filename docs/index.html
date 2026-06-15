@@ -861,12 +861,20 @@ function startModelProgress() {
   if (!modelProgress) return;
   if (modelProgressTimer) clearInterval(modelProgressTimer);
   modelProgress.classList.add("is-running");
-  modelProgress.style.width = "10%";
+  modelProgress.style.width = "18%";
+  modelProgress.dataset.direction = "1";
   modelProgressTimer = setInterval(() => {
     const current = parseFloat(modelProgress.style.width) || 0;
-    if (current < 90) {
-      modelProgress.style.width = `${Math.min(90, current + 6)}%`;
+    const direction = modelProgress.dataset.direction === "-1" ? -1 : 1;
+    let next = current + direction * 7;
+    if (next >= 82) {
+      next = 82;
+      modelProgress.dataset.direction = "-1";
+    } else if (next <= 18) {
+      next = 18;
+      modelProgress.dataset.direction = "1";
     }
+    modelProgress.style.width = `${next}%`;
   }, 260);
 }
 
@@ -881,6 +889,7 @@ function finishModelProgress(success) {
   window.setTimeout(() => {
     if (!modelProgress) return;
     modelProgress.style.width = "0%";
+    delete modelProgress.dataset.direction;
   }, success ? 900 : 250);
 }
 
@@ -893,6 +902,7 @@ try {
       toast(message);
       if (modelStatus) modelStatus.textContent = `モデル状態: ${message}`;
       if (message.includes("取得中") || message.includes("読み込み中")) {
+        if (loadRemoteModelBtn) loadRemoteModelBtn.classList.remove("is-attention");
         startModelProgress();
       } else if (message.includes("準備完了")) {
         finishModelProgress(true);
