@@ -862,6 +862,7 @@ const modelStatus = document.getElementById("modelStatus");
 const modelProgress = document.getElementById("modelProgress");
 const modelProgressText = document.getElementById("modelProgressText");
 const modelTrace = document.getElementById("modelTrace");
+const workerScriptUrl = "./llm-worker.js?v=20260615-2";
 
 function appendModelTrace(line) {
   if (!modelTrace) return;
@@ -914,7 +915,7 @@ function finishModelProgress(success) {
 }
 
 try {
-  llmWorker = new Worker("./llm-worker.js", { type: "module" });
+  llmWorker = new Worker(workerScriptUrl, { type: "module" });
 
   llmWorker.onmessage = (e) => {
     const { type, message, json } = e.data;
@@ -989,6 +990,10 @@ try {
 
   llmWorker.onerror = (e) => {
     toast("Worker エラー: " + (e.message || "unknown"));
+    appendModelTrace(`worker error: ${e.message || "unknown"}`);
+  };
+  llmWorker.onmessageerror = () => {
+    appendModelTrace("worker messageerror");
   };
 } catch (err) {
   toast("Worker 初期化失敗: " + (err.message || err));

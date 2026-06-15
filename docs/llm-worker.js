@@ -200,6 +200,7 @@ onmessage = async (e) => {
 
   if (type === "load-remote") {
     try {
+      postMessage({ type: "diagnostic", message: `worker received load-remote: ${e.data.modelId}` });
       postMessage({ type: "status", message: "小さいモデルを取得中..." });
       currentModelLabel = e.data.modelId;
       generator = await loadRemoteModel(e.data.modelId, (progress) => {
@@ -214,6 +215,7 @@ onmessage = async (e) => {
 
   if (type === "load-model") {
     try {
+      postMessage({ type: "diagnostic", message: "worker received load-model" });
       postMessage({ type: "status", message: "モデル読み込み中..." });
       const fileMap = e.data.fileMap;
       currentModelLabel = "local-upload";
