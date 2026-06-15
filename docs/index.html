@@ -489,6 +489,20 @@
     color: var(--muted);
   }
 
+  .trace-box {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(8, 12, 18, 0.72);
+    color: #cfe0f5;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    max-height: 220px;
+    overflow: auto;
+  }
+
   #list {
     display: grid;
     gap: 14px;
@@ -641,6 +655,7 @@
           <div id="modelProgress" class="progress-fill"></div>
         </div>
         <p id="modelProgressText" class="subtle">進捗: 0%</p>
+        <div id="modelTrace" class="trace-box">trace: idle</div>
         <p class="subtle">ボタンを押したときだけ読み込みます。進捗バーは読み込み中の目安です。</p>
       </div>
 
@@ -846,6 +861,17 @@ const loadRemoteModelBtn = document.getElementById("loadRemoteModel");
 const modelStatus = document.getElementById("modelStatus");
 const modelProgress = document.getElementById("modelProgress");
 const modelProgressText = document.getElementById("modelProgressText");
+const modelTrace = document.getElementById("modelTrace");
+
+function appendModelTrace(line) {
+  if (!modelTrace) return;
+  const time = new Date().toLocaleTimeString("ja-JP", { hour12: false });
+  const next = `${time} ${line}`;
+  modelTrace.textContent = modelTrace.textContent === "trace: idle"
+    ? next
+    : `${modelTrace.textContent}\n${next}`;
+  modelTrace.scrollTop = modelTrace.scrollHeight;
+}
 
 function resetModelProgress() {
   if (modelProgress) {
@@ -853,6 +879,7 @@ function resetModelProgress() {
     modelProgress.style.width = "0%";
   }
   if (modelProgressText) modelProgressText.textContent = "進捗: 0%";
+  if (modelTrace) modelTrace.textContent = "trace: idle";
 }
 
 function startModelProgress() {
@@ -891,9 +918,24 @@ try {
 
   llmWorker.onmessage = (e) => {
     const { type, message, json } = e.data;
+    if (type === "diagnostic") {
+      appendModelTrace(message);
+      return;
+    }
     if (type === "progress") {
       if (e.data.phase === "initializing") {
         setModelProgress(96, "初期化中...");
+        appendModelTrace("initializing runtime");
+        return;
+      }
+      if (e.data.phase === "starting") {
+        const fileCount = e.data.fileCount || 1;
+        const fileIndex = e.data.fileIndex || 0;
+        const percent = ((fileIndex + 0.1) / fileCount) * 100;
+        const file = e.data.file ? ` / ${e.data.file}` : "";
+        setModelProgress(percent, `開始${file}`);
+        appendModelTrace(`start ${e.data.file || "(unknown)"}`);
+        if (loadRemoteModelBtn) loadRemoteModelBtn.classList.remove("is-attention");
         return;
       }
       const total = e.data.totalBytes || 0;
@@ -917,10 +959,14 @@ try {
         setModelProgress(10, `取得中${file}`);
       }
       if (loadRemoteModelBtn) loadRemoteModelBtn.classList.remove("is-attention");
+      if (e.data.fileLoadedBytes === e.data.fileTotalBytes) {
+        appendModelTrace(`done ${e.data.file || "(unknown)"}`);
+      }
     }
     if (type === "status") {
       toast(message);
       if (modelStatus) modelStatus.textContent = `モデル状態: ${message}`;
+      appendModelTrace(`status: ${message}`);
       if (message.includes("取得中") || message.includes("読み込み中")) {
         if (loadRemoteModelBtn) loadRemoteModelBtn.classList.remove("is-attention");
         startModelProgress();
@@ -931,6 +977,7 @@ try {
     if (type === "error") {
       toast("LLM エラー: " + message);
       if (modelStatus) modelStatus.textContent = `モデル状態: エラー - ${message}`;
+      appendModelTrace(`error: ${message}`);
       finishModelProgress(false);
       if (loadRemoteModelBtn) loadRemoteModelBtn.classList.add("is-attention");
     }
@@ -1042,6 +1089,8 @@ document.getElementById("loadRemoteModel").onclick = async () => {
     loadRemoteModelBtn.classList.remove("is-attention");
   }
   if (modelStatus) modelStatus.textContent = "モデル状態: 読み込み開始...";
+  appendModelTrace(`request load: ${modelId}`);
+  resetModelProgress();
   startModelProgress();
   llmWorker.postMessage({ type: "load-remote", modelId });
 };

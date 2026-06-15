@@ -19,38 +19,34 @@ const REMOTE_MODEL_FILES = [
   "onnx/model_q4.onnx"
 ];
 
-async function fetchWithProgress(url, onChunk) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
-  }
+function downloadWithProgress(url, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", url, true);
+    xhr.responseType = "arraybuffer";
 
-  const total = Number(response.headers.get("content-length")) || 0;
-  if (!response.body) {
-    const buf = await response.arrayBuffer();
-    onChunk(buf.byteLength, total);
-    return buf;
-  }
+    xhr.onprogress = (event) => {
+      onProgress({
+        loadedBytes: event.loaded || 0,
+        totalBytes: event.lengthComputable ? event.total : 0
+      });
+    };
 
-  const reader = response.body.getReader();
-  const chunks = [];
-  let received = 0;
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress({
+          loadedBytes: xhr.response ? xhr.response.byteLength : 0,
+          totalBytes: xhr.response ? xhr.response.byteLength : 0
+        });
+        resolve(xhr.response);
+      } else {
+        reject(new Error(`Failed to fetch ${url}: ${xhr.status} ${xhr.statusText}`));
+      }
+    };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.byteLength;
-    onChunk(received, total);
-  }
-
-  const out = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out.buffer;
+    xhr.onerror = () => reject(new Error(`Failed to fetch ${url}`));
+    xhr.send();
+  });
 }
 
 async function loadRemoteModel(modelId, onProgress) {
@@ -61,69 +57,62 @@ async function loadRemoteModel(modelId, onProgress) {
   const fileMap = {};
   let loadedBytes = 0;
   let loadedFiles = 0;
-  const expectedBytes = new Map();
-
-  // First collect sizes, then fetch sequentially so we can report real progress.
-  for (const file of REMOTE_MODEL_FILES) {
-    let size = 0;
-    try {
-      const head = await fetch(`${baseUrl}/${file}`, { method: "HEAD" });
-      size = Number(head.headers.get("content-length")) || 0;
-    } catch {
-      size = 0;
-    }
-    expectedBytes.set(file, size);
-  }
-
-  const totalBytes = [...expectedBytes.values()].reduce((sum, size) => sum + size, 0);
   const fileCount = REMOTE_MODEL_FILES.length;
+  const estimatedBytes = new Map();
 
   for (let i = 0; i < REMOTE_MODEL_FILES.length; i += 1) {
     const file = REMOTE_MODEL_FILES[i];
-    const size = expectedBytes.get(file) || 0;
+    onProgress({ kind: "diagnostic", message: `start download: ${file}` });
     onProgress({
-      phase: "downloading",
+      phase: "starting",
       file,
       loadedBytes,
-      totalBytes,
+      totalBytes: [...estimatedBytes.values()].reduce((sum, size) => sum + size, 0),
       loadedFiles,
       fileIndex: i,
       fileCount,
       fileLoadedBytes: 0,
-      fileTotalBytes: size
+      fileTotalBytes: estimatedBytes.get(file) || 0
     });
 
-    const buf = await fetchWithProgress(`${baseUrl}/${file}`, (fileLoadedBytes) => {
-      const currentTotal = loadedBytes + fileLoadedBytes;
-      const currentFiles = loadedFiles + (fileLoadedBytes > 0 ? 0 : 0);
+    const buf = await downloadWithProgress(`${baseUrl}/${file}`, (event) => {
+      const currentTotal = loadedBytes + event.loadedBytes;
+      if (event.totalBytes > 0 && !estimatedBytes.has(file)) {
+        estimatedBytes.set(file, event.totalBytes);
+      }
       onProgress({
         phase: "downloading",
         file,
         loadedBytes: currentTotal,
-        totalBytes,
-        loadedFiles: currentFiles,
+        totalBytes: [...estimatedBytes.values()].reduce((sum, size) => sum + size, 0),
+        loadedFiles,
         fileIndex: i,
         fileCount,
-        fileLoadedBytes,
-        fileTotalBytes: size
+        fileLoadedBytes: event.loadedBytes,
+        fileTotalBytes: event.totalBytes || estimatedBytes.get(file) || 0
       });
     });
 
     fileMap[file] = buf;
     loadedBytes += buf.byteLength;
     loadedFiles += 1;
+    if (!estimatedBytes.has(file)) {
+      estimatedBytes.set(file, buf.byteLength);
+    }
+    onProgress({ kind: "diagnostic", message: `done download: ${file} (${buf.byteLength} bytes)` });
   }
 
+  onProgress({ kind: "diagnostic", message: "all files downloaded, initializing model runtime" });
   onProgress({
     phase: "initializing",
     file: null,
-    loadedBytes: totalBytes,
-    totalBytes,
+    loadedBytes,
+    totalBytes: loadedBytes,
     loadedFiles: fileCount,
     fileIndex: fileCount,
     fileCount,
-    fileLoadedBytes: totalBytes,
-    fileTotalBytes: totalBytes
+    fileLoadedBytes: loadedBytes,
+    fileTotalBytes: loadedBytes
   });
 
   const model = await AutoModelForCausalLM.from_pretrained("local-model", {
@@ -146,6 +135,7 @@ async function loadRemoteModel(modelId, onProgress) {
     dtype: "q4"
   });
 
+  onProgress({ kind: "diagnostic", message: "model object created" });
   const tokenizer = await AutoTokenizer.from_pretrained("local-tokenizer", {
     tokenizer_file: "tokenizer.json",
     file_system: {
@@ -164,6 +154,8 @@ async function loadRemoteModel(modelId, onProgress) {
     }
   });
 
+  onProgress({ kind: "diagnostic", message: "tokenizer created" });
+  onProgress({ kind: "diagnostic", message: "building pipeline" });
   return await pipeline("text-generation", model, tokenizer);
 }
 
